@@ -1,0 +1,181 @@
+<!doctype html>
+<html>
+<head>
+	<meta charset = "UTF-8">
+	<title>Space Inbrowser</title>
+	<script src = "js/class.js"></script>
+	<style>
+		canvas{
+			background-color: #000000;
+			display: block;
+			position: absolute;
+			margin: auto;
+			top: 0;
+			bottom: 0;
+			left: 0;
+			right: 0;
+		}
+	</style>
+</head>
+<body>
+	<script>
+		var tela, input, frames, frameSP, frameLevel; //frameLevel controla a velocidade de atualização de certos sprites
+		var alienSP, naveSP; //sprites
+		var aliens, direcao, nave, projetil; //objetos do jogo
+
+		function main(){
+			tela = new Mapa(502, 600);
+			input = new uControle();
+
+			var img = new Image();
+			img.src = "src/invaders.png";
+
+			var fighter = new Image();
+			fighter.src = "src/fighter2.png";
+
+			img.addEventListener("load", function(){ //Faz o recorte de cada sprite da imagem completa
+				alienSP = [
+					[new Sprite(this, 0, 0, 22, 16), new Sprite(this, 0, 16, 22, 16)],
+					[new Sprite(this, 22, 0, 16, 16), new Sprite(this, 22, 16, 16, 16)],
+					[new Sprite(this, 38, 0, 24, 16), new Sprite(this, 38, 16, 24, 16)]
+				];
+				naveSP = new Sprite(fighter, 0, 0, 30, 30);
+
+				iniciar();
+				executa();
+			})
+			
+		};
+
+		function iniciar(){ //inicia o jogo
+			frames = 0;
+			frameSP = 0;
+			frameLevel = 60;
+			direcao = 1; // 1 é para direita e -1 é para esquerda
+
+			nave = {
+				sprite: naveSP,
+				x: (tela.width - naveSP.largura) / 2,
+				y: tela.height - (30 + naveSP.altura)
+			}
+
+			projetil = [];
+			aliens = [];
+
+			var filas = [2, 0, 0, 1, 1]; //tipo de alien por fila
+			for(var i = 0, tam = filas.length; i < tam; i++){ //constrói o grupo de aliens
+				for(var j = 0; j < 10; j++){
+					var a = filas[i];
+					aliens.push({
+						sprite: alienSP[a],
+						x: 30 + j*30 + [0, 4, 0][a],
+						y: 30 + i*30,
+						largura: alienSP[a][0].largura,
+						altura: alienSP[a][0].altura
+					});
+				}
+			}
+		};
+
+		function executa(){ //faz o jogo funcionar de forma visual
+			var joga = function(){
+				update();
+				render();
+
+				window.requestAnimationFrame(joga, tela.canvas);
+			}
+			window.requestAnimationFrame(joga, tela.canvas);
+		};
+
+		function update(){ //atualiza o estado do jogo
+
+			if(input.botaoAperta(37)){ //movimento da nave para esquerda
+				nave.x -= 4;
+			}
+			if(input.botaoAperta(39)){ //direita
+				nave.x += 4;
+			}
+			nave.x = Math.max(Math.min(nave.x, tela.width - (30 + naveSP.largura)), 30); //limita a nave a não sair da tela
+
+			if(input.botaoPressiona(32)){ //atirar
+				projetil.push(new atiraProjetil(nave.x + 14, nave.y, -8, 2, 6, "#f00"));
+			}
+
+			for(var i = 0, tam = projetil.length; i < tam; i++){
+				var p = projetil[i];
+				p.atualiza();
+
+				if(p.y + p.height < 5 || p.y > tela.height){ //limita o projetil até o limite do canvas
+					projetil.splice(i, 1);
+					i--;
+					tam--;
+					continue;
+				}
+
+				for(var j = 0, tam2 = aliens.length; j < tam2; j++){ //verifica colisão e destrói alvo atingido
+					var a = aliens[j];
+					if(colide(p.x, p.y, p.width, p.height, a.x, a.y, a.largura, a.altura)){
+						aliens.splice(j, 1);
+						j--;
+						tam2--;
+						projetil.splice(i, 1);
+						i--;
+						tam--;
+					}
+				}
+			}
+
+			if(Math.random() < 0.03 && aliens.length > 0){ //tiro dos aliens
+				var a = aliens[Math.round(Math.random() * (aliens.length - 1))]
+
+				for(var i = 0, tam = aliens.length; i < tam; i++){
+					var b = aliens[i];
+					if(colide(a.x, a.y, a.largura, 100, b.x, b.y, b.largura, b.altura)){
+						a = b;
+					}//evita que o sprite dos projéteis dos aliens de atras passem por cima dos aliens da frente
+				}
+				projetil.push(new atiraProjetil(a.x + a.largura*0.5, a.y + a.altura, 4, 2, 4, "#0f0"));
+			}
+
+			frames++;
+			if(frames % frameLevel === 0){ //atualiza a posição dos aliens a cada 60 frames, frameLevel = 60
+				frameSP = (frameSP + 1) % 2;
+				var maximo = 0, minimo = tela.width;
+
+				for(var i = 0, tam = aliens.length; i < tam; i++){ //movimenta os aliens horizontalmente
+					var a = aliens[i];
+					a.x += 30 * direcao;
+					maximo = Math.max(maximo, a.x + a.largura);
+					minimo = Math.min(minimo, a.x);
+				}
+				if(maximo > tela.width || minimo < 30){ //faz os aliens descerem e movimentar para o outro lado
+					direcao *= -1;
+					for(var i = 0, tam = aliens.length; i < tam; i++){
+						aliens[i].x += 30 * direcao;
+						aliens[i].y += 30;
+					}
+				}
+			}
+		};
+
+		function render(){ //processa o que deve ser visto na tela
+			tela.refresh();
+
+			for(var i = 0, tam = aliens.length; i < tam; i++){
+				var a = aliens[i];
+				tela.mostraSprite(a.sprite[frameSP], a.x, a.y);
+			}
+
+			tela.modelo2D.save();
+			for(var i = 0, tam = projetil.length; i < tam; i++){
+				tela.mostraProjetil(projetil[i]);
+			}
+			tela.modelo2D.restore();
+
+			tela.mostraSprite(nave.sprite, nave.x, nave.y);
+		};
+		
+		main();
+	</script>
+</body>
+</html>
